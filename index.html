@@ -292,9 +292,38 @@
             overflow-x: auto;
             scroll-snap-type: x mandatory;
             scrollbar-width: none; 
+            user-select: none;      /* evita la selezione del testo durante il drag */
+            cursor: grab;           /* affordance: si può trascinare */
         }
 
         .gallery-scroll::-webkit-scrollbar { display: none; }
+
+        /* === FRECCE IN UNA BARRA SOPRA LA GALLERIA (desktop) === */
+        .gallery-controls {
+            display: flex;
+            justify-content: space-between;   /* una a sinistra, una a destra */
+            gap: var(--gutter);
+            margin-bottom: var(--gutter);
+        }
+
+        .gallery-arrow {
+            width: 32px;
+            height: 32px;                /* quadrato */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border: 0.5px solid var(--text-color);
+            background-color: #ffffff;
+            color: var(--text-color);
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 16px;
+            line-height: 1;
+            cursor: pointer;
+            transition: background-color 0.2s, opacity 0.2s;
+        }
+
+        .gallery-arrow:hover { background-color: #f5f5f5; }
 
         .gallery-item {
             position: relative; 
@@ -450,6 +479,10 @@
                 overflow-y: auto;
                 -webkit-overflow-scrolling: touch;
             }
+
+            /* Su touch le frecce non servono: c'è lo swipe nativo */
+            .gallery-controls { display: none; }
+        }
     </style>
 </head>
 <body>
@@ -489,6 +522,10 @@
             </div>
 
             <div class="workspace-bottom">
+                <div class="gallery-controls">
+                    <button class="gallery-arrow gallery-arrow-left" id="gallery-prev" type="button" aria-label="Grafiche precedenti">&lsaquo;</button>
+                    <button class="gallery-arrow gallery-arrow-right" id="gallery-next" type="button" aria-label="Grafiche successive">&rsaquo;</button>
+                </div>
                 <div class="gallery-scroll" id="gallery-container"></div>
             </div>
         </main>
@@ -504,7 +541,7 @@
                     <p><strong>02. COLORA</strong>Clicca su "Colore" in alto per cambiare la tinta della grafica. Il pattern a scacchiera significa che l'immagine finale sarà su fondo trasparente.</p>
                     <p><strong>03. SCARICA</strong>Clicca su "Scarica" per salvare l'immagine sul tuo telefono o computer in formato .png.</p>
                     <p><strong>04. STAMPA</strong>Ogni grafica è pronta per essere stampata su magliette, felpe, pantaloncini, cappellini, calze, adesivi, poster, cover...</p>
-                     <p><br>Clicca <a href="Img/EOG_SVG_Pack.zip" download="EOG_SVG_Pack.zip">qui</a> per scaricare tutte le grafiche in formato vettoriale. Clicca <a href="https://open.spotify.com/album/3vAjsYdC3b1kYWqmZaM4sd?si=fx6FQL5jQiiEVB6rYL4pRw">qui</a> per ascoltare È O G.</p>
+                     <p><br>Clicca <a href="Img/EOG_SVG_Pack.zip" download="EOG_SVG_Pack.zip">qui</a> per scaricare tutte le grafiche in formato vettoriale. Clicca <a href="https://open.spotify.com/album/3vAjsYdC3b1kYWqmZaM4sd?si=8nL_MpS5QnaIizHhqEOI0w">qui</a> per ascoltare È O G.</p>
                      <p><br>Segui G.Mineiro su <a href="https://www.instagram.com/g._mineiro/">Instagram</a>  e <a href="https://www.tiktok.com/@g.mineiro?_r=1&_t=ZN-96FrVhpBQCE">Tik Tok</a>.</p>
                 </div>
             </div>
@@ -698,6 +735,79 @@
         }
 
         loadAllSVGs();
+
+        // ================= SCORRIMENTO GALLERIA COL MOUSE (desktop) =================
+        (function enableMouseGalleryScroll() {
+            const gallery = document.getElementById('gallery-container');
+            if (!gallery) return;
+
+            const prevBtn = document.getElementById('gallery-prev');
+            const nextBtn = document.getElementById('gallery-next');
+
+            // 1) Rotellina verticale -> scorrimento orizzontale
+            gallery.addEventListener('wheel', (e) => {
+                // se è già un gesto orizzontale (trackpad), non interferisco
+                if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+                // se non c'è niente da scorrere lascio passare lo scroll della pagina
+                if (gallery.scrollWidth <= gallery.clientWidth) return;
+                e.preventDefault();
+                gallery.scrollLeft += e.deltaY;
+            }, { passive: false });
+
+            // 2) Trascinamento col mouse (click & drag)
+            let isDown = false, startX = 0, startScroll = 0, moved = 0;
+
+            gallery.addEventListener('pointerdown', (e) => {
+                if (e.pointerType !== 'mouse') return; // il touch usa lo scroll nativo
+                isDown = true;
+                moved = 0;
+                startX = e.clientX;
+                startScroll = gallery.scrollLeft;
+                gallery.style.cursor = 'grabbing';
+                gallery.style.scrollSnapType = 'none'; // snap fluido durante il drag
+            });
+
+            window.addEventListener('pointermove', (e) => {
+                if (!isDown) return;
+                const dx = e.clientX - startX;
+                moved = Math.max(moved, Math.abs(dx));
+                gallery.scrollLeft = startScroll - dx;
+            });
+
+            window.addEventListener('pointerup', () => {
+                if (!isDown) return;
+                isDown = false;
+                gallery.style.cursor = 'grab';
+                gallery.style.scrollSnapType = 'x mandatory'; // ripristino lo snap
+                // se ho trascinato davvero, annullo il click di selezione che parte subito dopo
+                if (moved > 6) {
+                    const blockClick = (ev) => {
+                        ev.stopPropagation();
+                        ev.preventDefault();
+                        gallery.removeEventListener('click', blockClick, true);
+                    };
+                    gallery.addEventListener('click', blockClick, true);
+                }
+            });
+
+            // 3) Frecce laterali: scorrono di circa mezza vista
+            const page = () => Math.max(120, Math.round(gallery.clientWidth * 0.6));
+            if (prevBtn) prevBtn.addEventListener('click', () => gallery.scrollBy({ left: -page(), behavior: 'smooth' }));
+            if (nextBtn) nextBtn.addEventListener('click', () => gallery.scrollBy({ left: page(), behavior: 'smooth' }));
+
+            // 4) Attenuo le frecce quando si è all'inizio o alla fine
+            const updateArrows = () => {
+                if (!prevBtn || !nextBtn) return;
+                const max = gallery.scrollWidth - gallery.clientWidth;
+                prevBtn.style.opacity = gallery.scrollLeft <= 2 ? '0.3' : '1';
+                nextBtn.style.opacity = gallery.scrollLeft >= max - 2 ? '0.3' : '1';
+            };
+            gallery.addEventListener('scroll', updateArrows, { passive: true });
+            window.addEventListener('resize', updateArrows);
+            // le grafiche si caricano in modo asincrono: ricontrollo dopo l'inserimento
+            setTimeout(updateArrows, 300);
+            setTimeout(updateArrows, 1200);
+        })();
 
         colorPicker.addEventListener('input', (e) => {
             const selectedColor = e.target.value;
